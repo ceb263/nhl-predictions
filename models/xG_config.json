@@ -1,0 +1,16 @@
+{
+  "features" : ["Period","Seconds_Elapsed","scoreDiff","yC","prev_Seconds_Elapsed",
+    "prev_sameTeam","prev_xC","prev_yC","timeSincePrev","distanceSincePrev",
+    "yDistanceSincePrev","prevShot_Seconds_Elapsed","prevShot_xC","prevShot_yC","prevShot_sameTeam",
+    "timeSincePrevShot","distanceSincePrevShot","yDistanceSincePrevShot",
+    "x_adj","y_adj","Strength_meanEnc","Ev_Zone_meanEnc","Type_meanEnc","ShotCategory_meanEnc"],
+  "mean_encodings" : {
+    "strength" : "Strength",
+    "type" : "Type",
+    "zone" : "Ev_Zone",
+    "shotCategory" : "ShotCategory"
+  },
+  "model_file" : "xG_gb.pkl",
+  "scaler_file" : "xG_scaler.pkl",
+  "mean_encodings_file" : "xG_mean_encodings.pkl"
+}
