@@ -4,6 +4,7 @@ import xG_model
 import os
 import gc
 import json
+import math
 
 def get_shots_data(df, season=2022):
     # create Play_Id field for joining later
@@ -37,8 +38,8 @@ def get_shots_data(df, season=2022):
     shots['prev_yC'] = shots['yC'].shift(1)
     shots['prev_Ev_Team'] = shots['Ev_Team'].shift(1)
     shots['prev_sameTeam'] = (shots['prev_Ev_Team']==shots['Ev_Team']).astype(int)
-    shots.at[shots['keepPrev']==0, ['prev_Event']] = np.NaN
-    shots.at[shots['keepPrev']==0, ['prev_Seconds_Elapsed','prev_xC','prev_yC']] = 0.
+    shots.loc[shots['keepPrev']==0, 'prev_Event'] = np.NaN
+    shots.loc[shots['keepPrev']==0, ['prev_Seconds_Elapsed','prev_xC','prev_yC']] = 0.
 
     # get time elapsed, and distance from previous event
     shots['timeSincePrev'] = shots['Seconds_Elapsed'] - shots['prev_Seconds_Elapsed']
@@ -73,7 +74,7 @@ def get_shots_data(df, season=2022):
     shots['prevShot_yC'] = shots['yC'].shift(1)
     shots['prevShot_Ev_Team'] = shots['Ev_Team'].shift(1)
     shots['prevShot_sameTeam'] = (shots['prevShot_Ev_Team']==shots['Ev_Team']).astype(int)
-    shots.at[shots['keepPrevShot']==0, ['prevShot_Seconds_Elapsed','prevShot_xC','prevShot_yC','prevShot_Ev_Team']] = np.NaN
+    shots.loc[shots['keepPrevShot']==0, ['prevShot_Seconds_Elapsed','prevShot_xC','prevShot_yC','prevShot_Ev_Team']] = np.NaN
     shots['timeSincePrevShot'] = shots['Seconds_Elapsed'] - shots['prevShot_Seconds_Elapsed']
     shots['distanceSincePrevShot'] = np.sqrt(np.square(shots['xC']-shots['prevShot_xC']) + np.square(shots['yC']-shots['prevShot_yC']))
     shots['yDistanceSincePrevShot'] = np.abs(shots['yC'] - shots['prevShot_yC'])
@@ -98,7 +99,7 @@ def get_shots_data(df, season=2022):
     shots[['timeSincePrevShot']] = shots[['timeSincePrevShot']].fillna(1200)
 
     # fix time since prev shot if prev shot was in another period
-    shots.at[shots['timeSincePrevShot']<0, 'timeSincePrevShot'] = 1200
+    shots.loc[shots['timeSincePrevShot']<0, 'timeSincePrevShot'] = 1200
 
     # adjust score to be score for and against, instead of home and away
     shots['homeTeamShot'] = (shots['Home_Team']==shots['Ev_Team']).astype(int)
@@ -116,7 +117,7 @@ def get_shots_data(df, season=2022):
 
 def add_xG_to_pbp(df, shots):
     # make xG predictions
-    model = xG_model()
+    model = xG_model.xG_model()
     shots['xG'] = model.predict(shots)
     del model
 
@@ -159,7 +160,7 @@ def add_xG_to_pbp(df, shots):
     df['prev_xG'] = df.groupby(['Game_Id','Date','Season','Period'])['xG'].shift(1)
     df['xG_flurry'] = df['xG']
     df.loc[df['ShotCategory']=='Rebound', 'xG_flurry'] = df.loc[df['ShotCategory']=='Rebound', 'xG']*(1-df.loc[df['ShotCategory']=='Rebound', 'prev_xG'])
-    df = df.drop('prev_xG',1)
+    df = df.drop(columns=['prev_xG'])
 
     return df
 
@@ -180,7 +181,7 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
         pbp_merge = pbp_merge.sort_values(by=['Game_Id','Period','Seconds_Elapsed'])
         pbp_merge['eventRank'] = pbp_merge.groupby(['Game_Id','Period','Seconds_Elapsed'])['Event'].rank('first')
         pbp_merge = pbp_merge.loc[pbp_merge['eventRank']==1]
-        pbp_merge = pbp_merge.drop('eventRank', 1)
+        pbp_merge = pbp_merge.drop(columns=['eventRank'])
         pbp_merge['Prev_Strength'] = pbp_merge['Strength'].shift(1)
         pbp_merge['Next_Strength'] = pbp_merge['Strength'].shift(-1)
         pbp_merge.loc[pbp_merge['Event']=='PENL', 'Strength'] = pbp_merge.loc[pbp_merge['Event']=='PENL', 'Next_Strength']
@@ -248,7 +249,7 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
         pbp_merge = pbp_merge.sort_values(by=['Game_Id','Period','Seconds_Elapsed'])
         pbp_merge['eventRank'] = pbp_merge.groupby(['Game_Id','Period','Seconds_Elapsed'])['Event'].rank('first')
         pbp_merge = pbp_merge.loc[pbp_merge['eventRank']==1]
-        pbp_merge = pbp_merge.drop('eventRank', 1)
+        pbp_merge = pbp_merge.drop(columns=['eventRank'])
         pbp_merge['Prev_Strength'] = pbp_merge['Strength'].shift(1)
         pbp_merge['Next_Strength'] = pbp_merge['Strength'].shift(-1)
         pbp_merge.loc[pbp_merge['Event']=='PENL', 'Strength'] = pbp_merge.loc[pbp_merge['Event']=='PENL', 'Next_Strength']
@@ -284,14 +285,14 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
             ['Game_Id','Date','Player','Player_Id','Zone']).agg({'Team':'count'})
         zone_starts_chunk.columns = ['DZoneStartCount_5v5']
         zone_starts_chunk = zone_starts_chunk.reset_index()
-        zone_starts_chunk = zone_starts_chunk.drop('Zone',1)
+        zone_starts_chunk = zone_starts_chunk.drop(columns=['Zone'])
 
         nzone_starts = shifts_chunk.loc[(shifts_chunk['Event']=='FAC')&(shifts_chunk['Strength']=='5x5')&\
             (shifts_chunk['Zone']=='N'), ['Game_Id','Date','Player','Player_Id','Zone','Team']].groupby(\
             ['Game_Id','Date','Player','Player_Id','Zone']).agg({'Team':'count'})
         nzone_starts.columns = ['NZoneStartCount_5v5']
         nzone_starts = nzone_starts.reset_index()
-        nzone_starts = nzone_starts.drop('Zone',1)
+        nzone_starts = nzone_starts.drop(columns=['Zone'])
         zone_starts_chunk = zone_starts_chunk.merge(nzone_starts, on=['Game_Id','Date','Player','Player_Id'], how='outer')
 
         ozone_starts = shifts_chunk.loc[(shifts_chunk['Event']=='FAC')&(shifts_chunk['Strength']=='5x5')&\
@@ -299,7 +300,7 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
             ['Game_Id','Date','Player','Player_Id','Zone']).agg({'Team':'count'})
         ozone_starts.columns = ['OZoneStartCount_5v5']
         ozone_starts = ozone_starts.reset_index()
-        ozone_starts = ozone_starts.drop('Zone',1)
+        ozone_starts = ozone_starts.drop(columns=['Zone'])
         zone_starts_chunk = zone_starts_chunk.merge(ozone_starts, on=['Game_Id','Date','Player','Player_Id'], how='outer')
 
         if i==0:
@@ -921,7 +922,7 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
 
         # add up home and away player position numbers
         playerGame['position_{}'.format(str(i))] = playerGame['position_home{}'.format(str(i))].fillna(0) + playerGame['position_away{}'.format(str(i))].fillna(0)
-        playerGame = playerGame.drop(['position_home{}'.format(str(i)),'position_away{}'.format(str(i))], 1)
+        playerGame = playerGame.drop(columns=['position_home{}'.format(str(i)),'position_away{}'.format(str(i))])
 
     # fill nulls, and add up on-ice columns so there is only one per stat
     playerGame = playerGame.fillna(0)
@@ -956,15 +957,15 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
         playerGame[col] = playerGame['{}_home1'.format(col)] + playerGame['{}_home2'.format(col)] + playerGame['{}_home3'.format(col)] + playerGame['{}_home4'.format(col)] \
             + playerGame['{}_home5'.format(col)] + playerGame['{}_home6'.format(col)] + playerGame['{}_away1'.format(col)] + playerGame['{}_away2'.format(col)] \
             + playerGame['{}_away3'.format(col)] + playerGame['{}_away4'.format(col)] + playerGame['{}_away5'.format(col)] + playerGame['{}_away6'.format(col)]
-        playerGame = playerGame.drop(['{}_home1'.format(col),'{}_home2'.format(col),'{}_home3'.format(col),'{}_home4'.format(col),'{}_home5'.format(col),
+        playerGame = playerGame.drop(columns=['{}_home1'.format(col),'{}_home2'.format(col),'{}_home3'.format(col),'{}_home4'.format(col),'{}_home5'.format(col),
                                       '{}_home6'.format(col),'{}_away1'.format(col),'{}_away2'.format(col),'{}_away3'.format(col),'{}_away4'.format(col),
-                                      '{}_away5'.format(col),'{}_away6'.format(col)], 1)
+                                      '{}_away5'.format(col),'{}_away6'.format(col)])
 
     # combine the team columns into one
     playerGame['Team'] = playerGame[['team_away1','team_away2','team_away3','team_away4','team_away5','team_away6',
                                      'team_home1','team_home2','team_home3','team_home4','team_home5','team_home6']].replace(0,'').max(1)
-    playerGame = playerGame.drop(['team_away1','team_away2','team_away3','team_away4','team_away5','team_away6',
-                                  'team_home1','team_home2','team_home3','team_home4','team_home5','team_home6'], 1)
+    playerGame = playerGame.drop(columns=['team_away1','team_away2','team_away3','team_away4','team_away5','team_away6',
+                                  'team_home1','team_home2','team_home3','team_home4','team_home5','team_home6'])
 
     # downcast some fields
     playerGame['Game_Id'] = playerGame['Game_Id'].astype(np.int32)
@@ -1015,7 +1016,7 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
     players.loc[players['maxcol'].isin(['position_4','position_5']),'Position'] = 'D'
     players.loc[players['maxcol']=='position_6','Position'] = 'G'
 
-    playerGame = playerGame.drop(['position_1','position_2','position_3','position_4','position_5','position_6'], 1)
+    playerGame = playerGame.drop(columns=['position_1','position_2','position_3','position_4','position_5','position_6'])
     playerGame = playerGame.merge(players[['Player','PlayerID','Position']], on=['Player','PlayerID'], how='left')
     del players
 
@@ -1035,18 +1036,19 @@ def aggregate_player_data(plays, shifts, homeaway_adjustments='data/score_homeaw
     playerGame.loc[(playerGame['Season']==2012)&(playerGame['teamGameRank']>48),'Playoffs'] = 1 #fix for the lockout-shortened season
     playerGame.loc[(playerGame['Season']==2019)&(playerGame['Date']>'2020-03-12'),'Playoffs'] = 1 #fix for the first covid-shortened season
     playerGame.loc[(playerGame['Season']==2020)&(playerGame['teamGameRank']>56),'Playoffs'] = 1 #fix for the second covid-shortened season
-    playerGame = playerGame.drop('teamGameRank',1)
+    playerGame = playerGame.drop(columns=['teamGameRank'])
     playerGame = playerGame.loc[playerGame['PlayerID']>=1]
 
     return playerGame, toi_overlap
 
 def add_elo(teamGame):
+    teamGame['Game_Id_Unique'] = (teamGame['Season'].astype(str) + teamGame['Game_Id'].astype(str)).astype(int)
     teamGame = teamGame.sort_values(by=['DateInt','Game_Id'])
     teamGame['teamGameRankOverall'] = teamGame.groupby('Team')['DateInt'].rank("dense")
-    gids = teamGame['Game_Id'].unique().tolist() #gids = teamGame.loc[teamGame['Elo'].isnull(), 'Game_Id'].unique().tolist()
+    gids = teamGame['Game_Id_Unique'].unique().tolist() #gids = teamGame.loc[teamGame['Elo'].isnull(), 'Game_Id'].unique().tolist()
     teamGame['Elo'] = 1500 #teamGame.loc[teamGame['Elo'].isnull(), 'Elo'] = 1500
     for gid in gids:
-        game_df = teamGame.loc[teamGame['Game_Id']==gid].copy()
+        game_df = teamGame.loc[teamGame['Game_Id_Unique']==gid].copy()
         elo_1 = game_df['Elo'].iloc[0]
         elo_2 = game_df['Elo'].iloc[1]
         if game_df['teamGameRank'].iloc[0]==1 and game_df['teamGameRankOverall'].iloc[0]>1:
@@ -1077,7 +1079,7 @@ def add_elo(teamGame):
         teamGame.loc[(teamGame['Team']==game_df['Team'].iloc[0]) & (teamGame['teamGameRankOverall']==game_df['teamGameRankOverall'].iloc[0]+1), 'Elo'] = new_elo_1
         teamGame.loc[(teamGame['Team']==game_df['Team'].iloc[1]) & (teamGame['teamGameRankOverall']==game_df['teamGameRankOverall'].iloc[1]+1), 'Elo'] = new_elo_2
 
-    return teamGame
+    return teamGame.drop(columns='Game_Id_Unique')
 
 def aggregate_team_data(pbp, prev_teamGame, homeaway_adjustments='data/score_homeaway_adjustments.csv'):
     # read adjustments data
@@ -1188,7 +1190,7 @@ def aggregate_team_data(pbp, prev_teamGame, homeaway_adjustments='data/score_hom
     teamGame = teamGame.merge(df_temp, on=['Game_Id','Date'])
     del df_temp
     teamGame['Win'] = ((teamGame['Goals']==teamGame['winGoals']) & (teamGame['Shootout_Goals']==teamGame['winShootoutGoals'])).astype(np.int16)
-    teamGame = teamGame.drop(['Shootout_Goals','winGoals','winShootoutGoals'],1)
+    teamGame = teamGame.drop(columns=['Shootout_Goals','winGoals','winShootoutGoals'])
 
     # fix a bug
     teamGame = teamGame.loc[teamGame['Team'].str.len()==3]
@@ -1225,12 +1227,21 @@ def add_scheduled_games(teamGame, schedule, season=2022):
     away['Home'] = 0
     schedule = pd.concat([home, away], ignore_index=True)
     schedule['Team'] = schedule['Team'].replace({'PHX':'ARI', 'S.J':'SJS', 'L.A':'LAK', 'T.B':'TBL', 'N.J':'NJD'})
-    schedule['Season'] = season
+    schedule['Season'] = int(season)
     schedule['DateInt'] = schedule['Date'].str.replace('-','').astype(np.int64)
 
     # combine dataframes
+    starting_goalies = teamGame[['Date','Team','StartingGoalie_Id']]
+    schedule = schedule.merge(starting_goalies, how='left', on=['Date','Team'])
     teamGame = teamGame.loc[teamGame['Date']<(schedule['Date'].min())]
     teamGame = pd.concat([teamGame, schedule], ignore_index=True)
+
+    # add playoffs column
+    teamGame['teamGameRank'] = teamGame.groupby(['Team','Season'])['DateInt'].rank("dense")
+    teamGame['Playoffs'] = (teamGame['teamGameRank']>82).astype(np.int8)
+    teamGame.loc[(teamGame['Season']==2012)&(teamGame['teamGameRank']>48),'Playoffs'] = 1 #fix for the lockout-shortened season
+    teamGame.loc[(teamGame['Season']==2019)&(teamGame['Date']>'2020-03-12'),'Playoffs'] = 1 #fix for the first covid-shortened season
+    teamGame.loc[(teamGame['Season']==2020)&(teamGame['teamGameRank']>56),'Playoffs'] = 1 #fix for the second covid-shortened season
 
     # add elo ratings
     teamGame = add_elo(teamGame)
@@ -1390,6 +1401,7 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
         'xGI60' : ['mean']
     }).reset_index()
     playerTeamGame.columns = ['Date','Team','StartingGoalie_Id','Goalie_xGI60']
+    games_df['StartingGoalie_Id'] = games_df['StartingGoalie_Id'].astype(int)
     games_df = games_df.merge(playerTeamGame, on=['Date','Team','StartingGoalie_Id'], how='left')
 
     # add some lag features (rolling averages of past games)
@@ -1404,19 +1416,19 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
     games_df = _add_lag(games_df, metrics, 64, 'Team')
 
     # do a self-join to get features for the opposing team
-    games_df['teamGameVal'] = games_df.groupby(['Game_Id','Season','Date'])['xG'].rank("dense").replace(2, -1)
+    games_df['teamGameVal'] = games_df.groupby(['Game_Id','Season','Date'])['Team'].rank("dense").replace(2, -1)
     games_df['LastGame'] = games_df.groupby('Team')['Date'].shift(1)
     games_df['RestDays'] = (pd.to_datetime(games_df['Date']) - pd.to_datetime(games_df['LastGame']))/np.timedelta64(1,'D')
     games_df['BackToBack'] = (games_df['RestDays']==1).astype(np.int16)
     games_df_opp = games_df.copy()
     games_df_opp['teamGameVal'] = games_df_opp['teamGameVal'] * -1
-    games_df_opp = games_df_opp.drop(['Win','DateInt','Playoffs','Home','teamGameRankOverall','teamGameRank','StartingGoalie','StartingGoalie_Id'],1)
+    games_df_opp = games_df_opp.drop(columns=['Win','DateInt','Playoffs','Home','teamGameRankOverall','teamGameRank','StartingGoalie','StartingGoalie_Id'])
     for c in games_df_opp.columns.tolist():
         if c not in ['Game_Id','Date','Team','Season','teamGameVal']:
             games_df_opp = games_df_opp.rename(columns = {c : 'Opp_'+c})
     games_df_opp = games_df_opp.rename(columns = {'Team' : 'Opp'})
     games_df = games_df.merge(games_df_opp, on=['Game_Id','Date','Season','teamGameVal'])
-    games_df = games_df.drop('teamGameVal',1)
+    games_df = games_df.drop(columns=['teamGameVal'])
     games_df['EloDiff'] = games_df['Elo'] - games_df['Opp_Elo']
     games_df['EloDiff_538adj'] = (games_df['Elo'] - games_df['Opp_Elo'] + (games_df['Home']*50) + ((games_df['Home']-1)*50))*(games_df['Playoffs']*0.25+1)
 
@@ -1432,7 +1444,7 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
             + ((1 - np.tanh((games_df.loc[games_df['teamGameRank']>1, 'teamGameRank']-1)/tanh_inseason_coefs_team[m])) \
             * games_df.loc[games_df['teamGameRank']>1, 'preseason_x'+m])
 
-        games_df = games_df.drop(['prevGames_'+m, 'preseason_x'+m], 1)
+        games_df = games_df.drop(columns=['prevGames_'+m, 'preseason_x'+m])
 
     # add lag features for allowed stats
     metrics = ['Opp_Goals','Opp_Shots','Opp_ShotAttempts',

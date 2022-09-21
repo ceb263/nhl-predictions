@@ -1,3 +1,5 @@
+# TODO: weight recent seasons higher?
+
 import pickle
 import os
 import json
@@ -6,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import log_loss, roc_auc_score
 
 scriptdir = os.path.dirname(__file__)
-config_file = os.path.join(scriptdir, 'models/games_config.json')
+config_file = os.path.join(scriptdir, 'configs/games_config.json')
 with open(config_file, 'r') as f:
     games_config = json.load(f)
 
@@ -19,12 +21,17 @@ class games_model(object):
         # makes game predictions for games in the provided dataframe
 
         # filter for only home regular season games
-        if ['Home'] in df.columns:
+        if 'Home' in df.columns:
             df = df.loc[df['Home']==1]
-        if ['Playoffs'] in df.columns:
+        if 'Playoffs' in df.columns:
             df = df.loc[df['Playoffs']==0]
 
         # create input feature array
+        #df_check = df[games_config['features']].head(1)
+        #df_check = df_check.loc[:,df_check.isnull().max(0)]
+        #print (df_check.T)
+        df = df.dropna(subset=games_config['features'])
+        print (df.loc[df['Team']=='TOR', games_config['features']].T)
         X = df[games_config['features']].values
         scaler = pickle.load(open(self.scaler_file, 'rb'))
         X = scaler.transform(X)
@@ -38,10 +45,13 @@ class games_model(object):
 
         return df
 
-    def train(self, df):
-        # retrains goals model based on given data
+    def train(self, min_season=2015, max_season=2020):
+        # retrains games model
 
-        #df = df.loc[~df[features].isnull().max(1)]
+        # read train data
+        df = pd.read_csv('data/gameTrain_{}.pkl'.format(str(min_season)))
+        for season in range(min_season+1, max_season+1):
+            df = pd.concat([df, pd.read_csv('data/gameTrain_{}.pkl'.format(str(season)))], ignore_index=True)
 
         X = df[games_config['features']].values
         y = df['Win'].values

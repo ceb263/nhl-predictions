@@ -1,13 +1,16 @@
+# TODO: weight recent seasons higher?
+
 import pickle
 import os
 import json
 import lightgbm as lgb
-from data_processing import get_shots_data
+import data_processing
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import log_loss, roc_auc_score
 
 scriptdir = os.path.dirname(__file__)
-config_file = os.path.join(scriptdir, 'models/xG_config.json')
+config_file = os.path.join(scriptdir, 'configs/xG_config.json')
 with open(config_file, 'r') as f:
     xG_config = json.load(f)
 
@@ -40,9 +43,9 @@ class xG_model(object):
         # retrains xG model
 
         # read data and process into just shots for xG model
-        df = get_shots_data(pd.read_pickle('data/pbp_2012.pkl'), 2012)[1]
+        df = data_processing.get_shots_data(pd.read_pickle('data/pbp_2012.pkl'), 2012)[1]
         for season in range(2013, max_season+1):
-            df = pd.concat([df, get_shots_data(pd.read_pickle('data/pbp_{}.pkl'.format(str(season))), season)[1]], ignore_index=True)
+            df = pd.concat([df, data_processing.get_shots_data(pd.read_pickle('data/pbp_{}.pkl'.format(str(season))), season)[1]], ignore_index=True)
 
         # get mean encodings
         mean_codes_strength = df.groupby(['Strength'])['goal'].mean().to_dict()
