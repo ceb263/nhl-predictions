@@ -7,6 +7,7 @@
 
 # TODO: only run elo updates for new games
 # TODO: predictions only work for one day at a time
+# TODO: scraper may have included some preseason games in the data
 
 import data_scraper
 import data_processing
@@ -15,6 +16,7 @@ import games_model
 import argparse
 import os
 import pandas as pd
+import numpy as np
 import datetime
 from datetime import date
 from update_preseason_ratings import PreseasonRatingsUpdater
@@ -46,12 +48,42 @@ def main(tofile, start_date=None, end_date=None, season=2022,
 
     # read teamGame and playerGame data
     teamGame = pd.read_pickle(teamGame_file)
-    playerGame = pd.read_pickle(playerGame_file)
+    try:
+        playerGame = pd.read_pickle(playerGame_file)
+        seasonFirstDay = False
+    except FileNotFoundError:
+        # there have not been any games yet this season, so playerGame doesn't exist yet
+        playerGame = pd.DataFrame(columns=['Player','PlayerID','TOI_5v5'])
+        seasonFirstDay = True
+        pass
 
     # combine with scheduled games
     teamGame = data_processing.add_scheduled_games(teamGame, schedule, season)
-    print (teamGame.loc[teamGame['Date']=="2021-10-13"].head()) #elo is broken
-    ### TODONOW: add projected lineup to playerGame, need ['Player','PlayerID','Position','Season','Date']
+    ### TODONOW: add projected lineup to playerGame, need ['Player','PlayerID','Position','Season','Date','Playoffs']
+    rosters = pd.DataFrame()
+    ids = pd.read_pickle('data/playerGame_{}.pkl'.format(str(int(season)-1)))[['Player','PlayerID']]
+    ids = pd.concat([playerGame[['Player','PlayerID']], ids], ignore_index=True)
+    ids = ids.groupby('Player', as_index=False).max()
+    for t in schedule['home_team'].tolist()+schedule['away_team'].tolist():
+        try:
+            roster = pd.read_json('configs/rosters/{}.json'.format(t))
+            roster = roster.merge(ids, on='Player', how='left')
+            if len(roster.loc[roster['PlayerID'].isnull()].index)>0:
+                print ('Missing PlayerIDs:')
+                print (roster.loc[roster['PlayerID'].isnull()])
+            roster['Season'] = int(season)
+            roster['Date'] = start_date
+            roster['DateInt'] = roster['Date'].str.replace('-','').astype(np.int64)
+            roster['Playoffs'] = 0
+            roster['Game_Id'] = schedule.loc[((schedule['home_team']==t)|(schedule['away_team']==t))&(schedule['date']==start_date),'game_id'].max()
+            roster['Team'] = t
+            playerGame = pd.concat([playerGame, roster], ignore_index=True)
+            teamGame.loc[(teamGame['Team']==t)&(teamGame['Date']==start_date), 'StartingGoalie_Id'] = roster.loc[roster['Position']=='G', 'PlayerID'].max()
+        except FileNotFoundError:
+            print ('No roster found for {}, ignoring this team'.format(t))
+            teamGame = teamGame.loc[~((teamGame['Team']==t)&(teamGame['Date'].isin(schedule['date'].unique())))]
+            pass
+
 
     # only include regular season games
     teamGame = teamGame.loc[teamGame['Playoffs']==0]
@@ -74,7 +106,10 @@ def main(tofile, start_date=None, end_date=None, season=2022,
     teamGame = teamGame.merge(ratings, on=['Team','Season'], how='left')
 
     # add inseason ratings
-    playerGame = inseason_ratings.add_player_inseason_ratings(playerGame, pd.read_pickle(toiOverlap_file), start_date, end_date)
+    if seasonFirstDay:
+        playerGame = inseason_ratings.add_player_inseason_ratings(playerGame, pd.DataFrame(columns=['Player_x','Player_Id_x','Strength','Game_Id']), start_date, end_date)
+    else:
+        playerGame = inseason_ratings.add_player_inseason_ratings(playerGame, pd.read_pickle(toiOverlap_file), start_date, end_date)
     teamGame = inseason_ratings.add_team_inseason_ratings(teamGame, start_date, end_date)
     print ('preseason ratings added!')
 

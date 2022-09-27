@@ -598,7 +598,7 @@ def add_team_inseason_ratings(teamGame, start_date, end_date):
                     'prevGames_UnblockedShotAttemptsAdjustedAgainst','prevGames_xGAdjustedAgainst','prevGames_xG_flurryAdjustedAgainst',
                 'prevGames_GoalsAdjusted_5v5Against','prevGames_ShotsAdjusted_5v5Against','prevGames_ShotAttemptsAdjusted_5v5Against',
                     'prevGames_UnblockedShotAttemptsAdjusted_5v5Against','prevGames_xGAdjusted_5v5Against','prevGames_xG_flurryAdjusted_5v5Against']
-            df_temp['Date'] = i
+            df_temp['Date'] = i.strftime('%Y-%m-%d')
             if len(inseason_ratings.index)==0:
                 inseason_ratings = df_temp.copy(deep=True)
             else:

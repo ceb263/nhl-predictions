@@ -1285,7 +1285,8 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
     playerGame.loc[playerGame['PlayerGameNum']==1, 'xGC60_PP'] = playerGame.loc[playerGame['PlayerGameNum']==1, 'preseason_xGC60_PP']
     playerGame.loc[playerGame['PlayerGameNum']==1, 'xGP60_PK'] = playerGame.loc[playerGame['PlayerGameNum']==1, 'preseason_xGP60_PK']
     playerGame.loc[playerGame['PlayerGameNum']==1, 'xGI60_Pens'] = playerGame.loc[playerGame['PlayerGameNum']==1, 'preseason_xGI60_Pens']
-    playerGame.loc[playerGame['PlayerGameNum']==1, 'xGI60'] = playerGame.loc[playerGame['PlayerGameNum']==1, 'preseason_xGI60']
+    playerGame.loc[(playerGame['PlayerGameNum']==1)|(playerGame['prevGames_GI60'].isnull()), 'xGI60'] = \
+        playerGame.loc[(playerGame['PlayerGameNum']==1)|(playerGame['prevGames_GI60'].isnull()), 'preseason_xGI60']
 
     # project future player impacts based on combination of inseason performance and preseason expectations
     playerGame.loc[(playerGame['Position']=='F')&(playerGame['PlayerGameNum']>1), 'xGC60_5v5'] = \
@@ -1340,11 +1341,11 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
         + ((1 - np.tanh((playerGame.loc[(playerGame['Position']=='D')&(playerGame['PlayerGameNum']>1), 'PlayerGameNum']-1)/90)) \
         * playerGame.loc[(playerGame['Position']=='D')&(playerGame['PlayerGameNum']>1), 'preseason_xGI60_Pens'])
 
-    playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1), 'xGI60'] = \
-        (np.tanh((playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1), 'PlayerGameNum']-1)/39) \
-        * playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1), 'prevGames_GI60']) \
-        + ((1 - np.tanh((playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1), 'PlayerGameNum']-1)/39)) \
-        * playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1), 'preseason_xGI60'])
+    playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1)&(~playerGame['prevGames_GI60'].isnull()), 'xGI60'] = \
+        (np.tanh((playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1)&(~playerGame['prevGames_GI60'].isnull()), 'PlayerGameNum']-1)/39) \
+        * playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1)&(~playerGame['prevGames_GI60'].isnull()), 'prevGames_GI60']) \
+        + ((1 - np.tanh((playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1)&(~playerGame['prevGames_GI60'].isnull()), 'PlayerGameNum']-1)/39)) \
+        * playerGame.loc[(playerGame['Position']=='G')&(playerGame['PlayerGameNum']>1)&(~playerGame['prevGames_GI60'].isnull()), 'preseason_xGI60'])
 
     # aggregate individual player projections into team features
     playerTeamGame = playerGame.loc[playerGame['Position'].isin(['F','D'])].groupby(['Date','Team']).agg({
@@ -1416,19 +1417,16 @@ def add_game_features(teamGame, playerGame, preseason_config_team_file='configs/
     games_df = _add_lag(games_df, metrics, 64, 'Team')
 
     # do a self-join to get features for the opposing team
-    games_df['teamGameVal'] = games_df.groupby(['Game_Id','Season','Date'])['Team'].rank("dense").replace(2, -1)
     games_df['LastGame'] = games_df.groupby('Team')['Date'].shift(1)
     games_df['RestDays'] = (pd.to_datetime(games_df['Date']) - pd.to_datetime(games_df['LastGame']))/np.timedelta64(1,'D')
     games_df['BackToBack'] = (games_df['RestDays']==1).astype(np.int16)
     games_df_opp = games_df.copy()
-    games_df_opp['teamGameVal'] = games_df_opp['teamGameVal'] * -1
-    games_df_opp = games_df_opp.drop(columns=['Win','DateInt','Playoffs','Home','teamGameRankOverall','teamGameRank','StartingGoalie','StartingGoalie_Id'])
+    games_df_opp = games_df_opp.drop(columns=['Win','DateInt','Playoffs','Home','teamGameRankOverall','teamGameRank','StartingGoalie','StartingGoalie_Id','Opp'])
     for c in games_df_opp.columns.tolist():
-        if c not in ['Game_Id','Date','Team','Season','teamGameVal']:
+        if c not in ['Game_Id','Date','Team','Season','Opp']:
             games_df_opp = games_df_opp.rename(columns = {c : 'Opp_'+c})
     games_df_opp = games_df_opp.rename(columns = {'Team' : 'Opp'})
-    games_df = games_df.merge(games_df_opp, on=['Game_Id','Date','Season','teamGameVal'])
-    games_df = games_df.drop(columns=['teamGameVal'])
+    games_df = games_df.merge(games_df_opp, on=['Game_Id','Date','Season','Opp'])
     games_df['EloDiff'] = games_df['Elo'] - games_df['Opp_Elo']
     games_df['EloDiff_538adj'] = (games_df['Elo'] - games_df['Opp_Elo'] + (games_df['Home']*50) + ((games_df['Home']-1)*50))*(games_df['Playoffs']*0.25+1)
 
