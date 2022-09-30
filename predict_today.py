@@ -64,7 +64,10 @@ def main(tofile, start_date=None, end_date=None, season=2022,
     ids = pd.read_pickle('data/playerGame_{}.pkl'.format(str(int(season)-1)))[['Player','PlayerID']]
     ids = pd.concat([playerGame[['Player','PlayerID']], ids], ignore_index=True)
     ids = ids.groupby('Player', as_index=False).max()
-    for t in schedule['home_team'].tolist()+schedule['away_team'].tolist():
+    allTeams = pd.concat([schedule[['home_team']].rename(columns={'home_team':'Team'}),\
+        schedule[['away_team']].rename(columns={'away_team':'Team'})])
+    allTeams['Team'] = allTeams['Team'].replace({'PHX':'ARI', 'S.J':'SJS', 'L.A':'LAK', 'T.B':'TBL', 'N.J':'NJD'})
+    for t in allTeams['Team'].unique().tolist():
         try:
             roster = pd.read_json('configs/rosters/{}.json'.format(t))
             roster = roster.merge(ids, on='Player', how='left')
